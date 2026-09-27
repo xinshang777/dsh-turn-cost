@@ -16,7 +16,7 @@ DSH Web 界面：在每轮 assistant 回复的时间戳正后方显示**该轮�
 ```bash
 dsh plugin --profile web add link:.
 # 或
-dsh plugin --profile web add github:<你的用户名>/dsh-turn-cost
+dsh plugin --profile web add github:xinshang777/dsh-turn-cost
 ```
 
 安装后重启 `dsh web`。
