@@ -1,0 +1,30 @@
+{
+  "name": "dsh-turn-cost",
+  "version": "0.1.0",
+  "private": true,
+  "description": "DSH Web 界面：每轮 assistant 时间戳后显示该轮费用金额（对齐 dsh-whale-widget 计价口径）",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "deepseek-harness",
+    "cost",
+    "pricing"
+  ],
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js"
+  },
+  "files": [
+    "lib",
+    "assets",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "license": "MIT"
+}
