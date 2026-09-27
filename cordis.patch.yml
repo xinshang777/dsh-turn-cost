@@ -1,6 +1,6 @@
 # ============================================================================
 # dsh-turn-cost —— DSH bundle patch
-# 安装： dsh plugin --profile web add link:.          # 或 github:<你的用户名>/dsh-turn-cost
+# 安装： dsh plugin --profile web add link:.          # 或 github:xinshang777/dsh-turn-cost
 # 说明： 本文件是 bundle 层，优先级低于 profile 的 cordis.patch.yml。
 #        若要覆盖下面的 config，编辑 ~/.dsh/profiles/web/cordis.patch.yml
 #        并写 `- id: dsh-turn-cost` + `config:`（注意 config 是整体替换）。
