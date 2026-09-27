@@ -1,0 +1,34 @@
+# ============================================================================
+# dsh-turn-cost —— DSH bundle patch
+# 安装： dsh plugin --profile web add link:.          # 或 github:<你的用户名>/dsh-turn-cost
+# 说明： 本文件是 bundle 层，优先级低于 profile 的 cordis.patch.yml。
+#        若要覆盖下面的 config，编辑 ~/.dsh/profiles/web/cordis.patch.yml
+#        并写 `- id: dsh-turn-cost` + `config:`（注意 config 是整体替换）。
+# ============================================================================
+
+- insert:
+    - id: dsh-turn-cost
+      name: dsh-turn-cost
+      config:
+        # ===== 显示 =====
+        # null = 自适应（>=1 两位 / >=0.01 三位 / 其余四位）；或填 2/3/4 固定小数位
+        decimals: null
+        tinyLabel: "¥<0.0001"        # 四位小数仍为 0 时的显示
+        currency: "¥"
+        # ===== 拉取 =====
+        pollMs: 1200                 # 页面可见时的轮询间隔
+        pollMsHidden: 6000           # 页面隐藏时
+        # ===== 上下文 =====
+        showContext: true            # 在金额前显示该轮结束时的上下文占用百分比，点击可压缩
+        compactTimeoutMs: 120000     # 触发 /compact 的超时（毫秒）
+        # ===== 计价 =====
+        priceUnknownProviders: false # 非 deepseek provider 是否仍按 _default 计价
+        includeCacheWrite: false     # 是否把 cacheWriteTokens 按未命中价计入
+        # ===== 持久化 =====
+        ttlDays: 30
+        maxSessions: 200
+        maxTurnsPerSession: 2000
+        maxBytes: 4194304
+        backfill: true               # 是否用 sessionPersistence 回填历史会话
+        maxReplayEvents: 50000       # 单个会话回填的事件上限
+        debounceMs: 400              # 落盘去抖
