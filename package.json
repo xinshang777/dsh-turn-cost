@@ -1,6 +1,6 @@
 {
   "name": "dsh-turn-cost",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "DSH Web 界面：每轮 assistant 时间戳后显示该轮费用金额（对齐 dsh-whale-widget 计价口径）",
   "keywords": [

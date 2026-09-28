@@ -25,6 +25,7 @@
     turns: {},
     cfg: {},
     lastKey: '',
+    dark: null,
     debug: { fiber: null, matched: 0 },
   })
 
@@ -71,6 +72,38 @@
     return null
   }
 
+  /* ---------------- 会话标识：以官方 DOM 属性为准 ----------------
+   * 官方在主对话容器上渲染 data-conversation-session="<sessionId>"
+   * （dsh-client-ui-conversation/lib/client.js:16256），dsh 自身也用
+   * `target.closest('[data-conversation-session]')` 取会话。
+   * 这是稳定来源；爬 React fiber 在实测中取不到值，只作兜底。
+   */
+
+  function domSessionId(fromEl) {
+    try {
+      var host = fromEl && fromEl.closest ? fromEl.closest('[data-conversation-session]') : null
+      if (!host) return null
+      var v = host.getAttribute('data-conversation-session')
+      if (v && SESSION_RE.test(v)) return v
+    } catch (e) {}
+    return null
+  }
+
+  /* 把 W.session 纠正到 DOM 里的真实会话，返回 true 表示发生了变化。
+   * 关键：不能像旧实现那样只在 W.session 为空时写入 —— 那样一旦被服务端的
+   * “最近会话”占了位就永远无法纠正，表现就是「切了会话却显示别人的金额」。 */
+  function syncSession() {
+    var tails = document.querySelectorAll('[data-turn-tail]')
+    if (!tails.length) return false
+    var sid = domSessionId(tails[0]) || sessionIdFrom(tails[0])
+    if (!sid || sid === W.session) return false
+    W.session = sid
+    W.rev = null
+    W.turns = {} // 立刻丢弃上一个会话的数据，避免任何一帧显示到别人身上
+    W.lastKey = ''
+    return true
+  }
+
   /* ---------------- 定位注入点 ---------------- */
 
   function scan(cb) {
@@ -83,10 +116,6 @@
       var info = actions.lastElementChild // = endInfo
       if (!info || info.tagName !== 'SPAN') continue
       if (!/\d/.test(info.textContent || '')) continue // 保险：确认这里确实渲染了时间
-      if (!W.session) {
-        var sid = sessionIdFrom(tails[i])
-        if (sid) W.session = sid
-      }
       cb(turn, info)
     }
   }
@@ -133,7 +162,7 @@
     return (
       '<svg width="22" height="22" viewBox="0 0 24 24" style="display:block">' +
       '<g transform="rotate(-90 12 12)">' +
-      '<circle cx="12" cy="12" r="' + r + '" fill="none" stroke="#d4d4d4" stroke-width="3"/>' +
+      '<circle cx="12" cy="12" r="' + r + '" fill="none" stroke="currentColor" stroke-opacity="0.25" stroke-width="3"/>' +
       '<circle cx="12" cy="12" r="' + r + '" fill="none" stroke="' + color + '" stroke-width="3" ' +
       'stroke-linecap="round" stroke-dasharray="' + circ.toFixed(2) + '" ' +
       'stroke-dashoffset="' + off.toFixed(2) + '"/></g>' +
@@ -146,26 +175,44 @@
   /* ---------------- 确认气泡（全局单例） ---------------- */
 
   var pop = null
+  var styleEl = null
+
+  /* 主题适配：dsh 在 <body> 上以 data-ds-dark-theme 标记暗色
+   * （dsh-client-ui-theme 的 bootThemeBodyScript: body.toggleAttribute('data-ds-dark-theme', dark)）。
+   * 用 CSS 选择器而非内联色，主题切换时浏览器自动重算，无需 JS 重绘。 */
+  function ensureStyle() {
+    if (styleEl && styleEl.isConnected) return
+    styleEl = document.createElement('style')
+    styleEl.setAttribute('data-dsh-turn-cost-style', '')
+    styleEl.textContent =
+      '#__dsh_tc_pop{background:#ffffff;color:#1f2329;border:1px solid #e3e6ea}' +
+      '#__dsh_tc_pop [data-p="sub"]{color:#6b7280}' +
+      '#__dsh_tc_pop .tcc{background:#f6f7f9;color:#1f2329;border:1px solid #d0d5dd}' +
+      'body[data-ds-dark-theme] #__dsh_tc_pop{background:#1f2329;color:#e8eaed;border-color:#3a3f47}' +
+      'body[data-ds-dark-theme] #__dsh_tc_pop [data-p="sub"]{color:#9aa0a6}' +
+      'body[data-ds-dark-theme] #__dsh_tc_pop .tcc{background:#2a2e34;color:#e8eaed;border-color:#454b54}'
+    ;(document.head || document.documentElement).appendChild(styleEl)
+  }
 
   function ensurePop() {
     if (pop) return pop
+    ensureStyle()
     pop = document.createElement('div')
     pop.id = '__dsh_tc_pop'
     pop.setAttribute('role', 'dialog')
     pop.style.cssText =
       'position:fixed;z-index:99999;min-width:210px;max-width:280px;' +
-      'background:#ffffff;color:#1f2329;border:1px solid #e3e6ea;border-radius:12px;' +
+      'border-radius:12px;' +
       'box-shadow:0 8px 28px rgba(0,0,0,.20);padding:13px 15px;font-size:13px;line-height:1.5;' +
       'font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:none'
 
     pop.innerHTML =
       '<div data-p="title" style="font-weight:700;font-size:14px;margin-bottom:4px"></div>' +
-      '<div data-p="sub" style="color:#6b7280;font-size:12px;margin-bottom:12px"></div>' +
+      '<div data-p="sub" style="font-size:12px;margin-bottom:12px"></div>' +
       '<div data-p="row" style="display:flex;gap:8px;justify-content:flex-end">' +
-      '<button data-p="cancel" type="button" style="' +
-      'padding:6px 12px;border:1px solid #d0d5dd;background:#f6f7f9;color:#1f2329;' +
-      'border-radius:8px;cursor:pointer;font-size:13px">取消</button>' +
-      '<button data-p="go" type="button" style="' +
+      '<button data-p="cancel" class="tcc" type="button" style="' +
+      'padding:6px 12px;border-radius:8px;cursor:pointer;font-size:13px">取消</button>' +
+      '<button data-p="go" class="tcc" type="button" style="' +
       'padding:6px 12px;border:1px solid #cf3a3a;background:#e74c3c;color:#fff;' +
       'border-radius:8px;cursor:pointer;font-size:13px;font-weight:600">压缩上下文</button>' +
       '</div>'
@@ -270,7 +317,9 @@
   function render() {
     if (rendering) return
     rendering = true
+    var adopted = false
     try {
+      adopted = syncSession()
       scan(function (turn, info) {
         var rec = W.turns[turn]
         var ratio = ratioOf(rec)
@@ -324,6 +373,9 @@
           return
         }
         wrap.setAttribute('data-key', key)
+        // React 开启「详细」用量面板后会往 endInfo 里追加节点：确保我们始终留在末尾
+        // （= 时间戳之后），而不是被挤到用量面板前面
+        if (info.lastElementChild !== wrap) info.appendChild(wrap)
 
         var ctxEl = wrap.firstElementChild
         var costEl = wrap.lastElementChild
@@ -343,12 +395,14 @@
     } finally {
       rendering = false
     }
+    // 会话被纠正（切换/新建）→ 立刻按新会话拉一次，不必等下一次轮询
+    if (adopted) kick()
   }
 
   /* ---------------- 拉取 ---------------- */
 
   function fetchTurns() {
-    var q = '?session=' + encodeURIComponent(W.session || '')
+    var q = '?session=' + encodeURIComponent(W.session || '') + '&lite=1'
     if (W.rev) q += '&rev=' + encodeURIComponent(W.rev)
     return fetch(API + q, { cache: 'no-store', credentials: 'same-origin' })
       .then(function (r) {
@@ -361,10 +415,10 @@
           W.pollMs = d.cfg.pollMs
           W.pollMsHidden = d.cfg.pollMsHidden
         }
-        if (d.session && d.session !== W.session) {
-          W.session = d.session
-          W.rev = null
-        }
+        // 服务端回的是别的会话 → 直接丢弃，绝不让 A 会话的金额渲染到 B 会话上
+        if (d.session && W.session && d.session !== W.session) return
+        // 客户端还不知道会话（首屏容器尚未渲染）→ 采纳服务端的引导值
+        if (d.session && !W.session) W.session = d.session
         W.source = d.source || 'exact'
         W.turns = d.turns || {}
         W.rev = d.rev || null
@@ -379,6 +433,8 @@
   var timer = null
   var mo = null
   var deb = null
+  var pendingRender = 0
+  var lastRenderAt = 0
 
   function scheduleNext() {
     if (timer) clearTimeout(timer)
@@ -405,21 +461,31 @@
     return (W.session || '') + '|' + parts.join(',')
   }
 
-  function start() {
-    render()
-    fetchTurns().then(scheduleNext)
-
-    mo = new MutationObserver(function () {
-      try {
-        mo.takeRecords()
-      } catch (e) {}
-      render() // React 重渲染后立刻补回被冲掉的节点
+  /* React 流式输出时 DOM 每秒可变更数十次。用固定 16ms 的合并窗口，把窗口内的多次
+   * 变更合并成一次全量扫描（render() 与 signature() 各要完整遍历一遍所有轮次）。
+   * 刻意不用 requestAnimationFrame：其触发频率取决于环境（headless/无绘制环境下
+   * 可能远高于 60Hz，实测约 200Hz），合并窗口不可控；固定时间窗在任何环境行为一致。
+   * （旧实现调用 mo.takeRecords() 后随即丢弃，并未起到任何合并作用。） */
+  function scheduleRender() {
+    if (pendingRender) return
+    var delay = Math.max(0, 16 - (Date.now() - lastRenderAt))
+    pendingRender = setTimeout(function () {
+      pendingRender = 0
+      lastRenderAt = Date.now()
+      render() // React 重渲染后补回被冲掉的节点
       var sig = signature()
       if (sig !== W.lastKey) {
         W.lastKey = sig
         kick()
       }
-    })
+    }, delay)
+  }
+
+  function start() {
+    render()
+    fetchTurns().then(scheduleNext)
+
+    mo = new MutationObserver(scheduleRender)
     mo.observe(document.documentElement, { childList: true, subtree: true })
 
     document.addEventListener('visibilitychange', function () {
